@@ -1,0 +1,52 @@
+name: DeepSeek API Monitor
+
+on:
+  schedule:
+    # GitHub Actions 使用 UTC 时间。这里设置为每小时执行一次（可根据需要调整）
+    # 表达式格式: 分 时 日 月 星期
+    - cron: '0 * * * *'
+  workflow_dispatch: 
+    # 允许随时在 GitHub 网页端手动触发运行
+
+permissions:
+  # 允许 Action 推送代码到仓库（为了保存 usage_history.db）
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 使用 uv 设置 Python 环境
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装项目依赖
+        run: |
+          uv pip install --system -r requirements.txt
+
+      - name: 执行监控脚本
+        env:
+          # 将敏感信息映射为 GitHub Secrets
+          AUTH: ${{ secrets.AUTH }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
+        run: |
+          python main.py
+
+      - name: 保存数据库变更到仓库
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add usage_history.db
+          # 如果数据库有变更（意味着增加了新记录或状态改变），则提交并推送
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update DB: 记录最新 API 用量 [skip ci]" && git push)
+
