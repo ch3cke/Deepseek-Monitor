@@ -86,10 +86,8 @@ def aggregate_usage(df, monitored_users, active_api_keys_by_name):
             user_tokens += key_tokens
             user_requests += key_requests
 
-        active_api_keys = [
-            build_platform_key_record(user_name, api_key)
-            for api_key in active_api_keys_by_name.get(user_name, [])
-        ]
+        active_api_key =build_platform_key_record(user_name, active_api_keys_by_name.get(user_name))
+
 
         models = {
             model_name: {
@@ -106,7 +104,7 @@ def aggregate_usage(df, monitored_users, active_api_keys_by_name):
             "requests": user_requests,
             "models": models,
             "api_keys": sorted(api_keys, key=lambda item: item["cost"], reverse=True),
-            "active_api_keys": active_api_keys,
+            "active_api_key": active_api_key,
         }
 
         result["summary"]["cost"] += user_cost
@@ -119,18 +117,15 @@ def aggregate_usage(df, monitored_users, active_api_keys_by_name):
 
 def refresh_active_api_keys(result, active_api_keys_by_name):
     for user_name, user_info in result.get("users", {}).items():
-        user_info["active_api_keys"] = [
-            build_platform_key_record(user_name, api_key)
-            for api_key in active_api_keys_by_name.get(user_name, [])
-        ]
+        user_info["active_api_key"] = build_platform_key_record(user_name, active_api_keys_by_name.get(user_name))
+
 
 
 def build_api_keys_payload(monitored_users, active_api_keys_by_name, archived_keys):
     items = {}
     for user_name in monitored_users:
-        for api_key in active_api_keys_by_name.get(user_name, []):
-            record = build_platform_key_record(user_name, api_key, status="active")
-            items[record["api_key_identity"]] = record
+        record = build_platform_key_record(user_name,  active_api_keys_by_name.get(user_name), status="active")
+        items[record["api_key_identity"]] = record
 
     for record in archived_keys:
         items[record["api_key_identity"]] = record

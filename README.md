@@ -14,16 +14,16 @@ GitHub Actions (every 10 minutes)
   -> Aggregate usage by monitored api_key name
   -> Send email warning at 80
   -> Delete active API key at 100
-  -> Keep lifecycle logs in Cloudflare D1
-  -> Mark deleted keys as used instead of removing them from history
+  -> Optionally persist lifecycle logs in Cloudflare D1
+  -> Optionally mark deleted keys as used instead of removing them from history
 ```
 
 ## What It Does
 
 - `MONITORED_USERS` is a comma-separated list of `api_key.name` values to monitor.
 - When a monitored user reaches `DEFAULT_WARNING_THRESHOLD` the job sends one warning email per billing month and active key scope.
-- When a monitored user reaches `DEFAULT_BUDGET_LIMIT` the job deletes the currently active DeepSeek API key and records that key as `used` in D1.
-- Historical logs are never deleted from D1.
+- When a monitored user reaches `DEFAULT_BUDGET_LIMIT` the job deletes the currently active DeepSeek API key.
+- If Cloudflare storage is enabled, the deleted key is also recorded as `used` in D1 and historical logs are kept.
 
 ## Files
 
@@ -42,14 +42,24 @@ app/
   ingest_client.py
   models.py
   notifier/
+    base.py
     email.py
+    manager.py
     webhook.py
+  storage/
+    base.py
+    cloudflare.py
+    feishu_bitable.py
+    noop.py
+    supabase.py
   utils/
     api_keys.py
     formatting.py
     time.py
 cloudflare/
   worker.js
+  schema.sql
+supabase/
   schema.sql
 tests/
   test_main.py
@@ -72,6 +82,8 @@ README.md
 - Changelog: [CHANGELOG.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/CHANGELOG.md:1)
 - Architecture notes: [docs/architecture.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/docs/architecture.md:1)
 - Deployment guide: [docs/deployment.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/docs/deployment.md:1)
+- Feishu Bitable storage guide: [docs/feishu-bitable-storage.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/docs/feishu-bitable-storage.md:1)
+- Supabase storage guide: [docs/supabase-storage.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/docs/supabase-storage.md:1)
 
 ## Open Source Setup
 
@@ -95,9 +107,6 @@ DEEPSEEK_INTERCOM_DEVICE_ID
 DEEPSEEK_HWWAFSESID
 DEEPSEEK_HWWAFSESTIME
 
-CLOUDFLARE_INGEST_URL
-INGEST_TOKEN
-
 SMTP_SERVER
 SMTP_PORT
 SMTP_USERNAME
@@ -109,6 +118,22 @@ RECEIVER_EMAIL
 Optional:
 
 ```text
+STORAGE_BACKEND
+CLOUDFLARE_INGEST_URL
+INGEST_TOKEN
+FEISHU_APP_ID
+FEISHU_APP_SECRET
+FEISHU_BITABLE_APP_TOKEN
+FEISHU_BITABLE_USERS_TABLE_ID
+FEISHU_BITABLE_API_KEYS_TABLE_ID
+FEISHU_BITABLE_USAGE_TABLE_ID
+FEISHU_BITABLE_EVENTS_TABLE_ID
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_MANAGED_USERS_TABLE
+SUPABASE_API_KEYS_TABLE
+SUPABASE_USAGE_RECORDS_TABLE
+SUPABASE_EVENTS_TABLE
 FEISHU_BOT_WEBHOOK_URL
 FEISHU_BOT_SECRET
 FEISHU_BOT_KEYWORD
@@ -121,10 +146,21 @@ Example:
 MONITORED_USERS=alice,bob,charlie
 DEFAULT_WARNING_THRESHOLD=80
 DEFAULT_BUDGET_LIMIT=100
+STORAGE_BACKEND=cloudflare
 CLOUDFLARE_INGEST_URL=https://your-worker.workers.dev/api/ingest
 ```
 
+`STORAGE_BACKEND` supports:
+
+- `auto`: use Cloudflare first, then Supabase, then Feishu Bitable when their full configs are present
+- `cloudflare`: prefer Cloudflare storage, but still degrades to no-op if required secrets are missing
+- `supabase`: prefer Supabase storage, but still degrades to no-op if required secrets are missing
+- `feishu_bitable`: prefer Feishu Bitable storage, but still degrades to no-op if required secrets are missing
+- `none`: disable persistence explicitly
+
 ## Cloudflare Setup
+
+This section is optional. `IngestClient` is enabled only when both `CLOUDFLARE_INGEST_URL` and `INGEST_TOKEN` are set. If either one is missing, the monitor still runs, but without persisted state, history, or cross-run deduplication.
 
 1. Create a D1 database.
 2. Run [cloudflare/schema.sql](/Users/ch3cke/Desktop/project/Deepseek-Monitor/cloudflare/schema.sql:1) in the D1 SQL console.
@@ -150,14 +186,21 @@ All `/api/*` endpoints require `Authorization: Bearer <INGEST_TOKEN>`.
 
 ## Interface Model
 
-The storage layer now behaves like a small REST API over D1 instead of a write-only log sink.
+The storage layer is now abstracted behind `app/storage/`.
 
 - `managed_users` is the configuration interface for monitored names and thresholds.
 - `api_keys` is the lifecycle interface for active and used keys.
 - `usage_records` is a snapshot interface for periodic usage observations.
 - `events` is the audit/event-stream interface for warning, block, and delete actions.
 
-The Python side mirrors these interfaces in [app/ingest_client.py](/Users/ch3cke/Desktop/project/Deepseek-Monitor/app/ingest_client.py:1) with:
+Current implementations:
+
+- `CloudflareStorage`: wraps [app/ingest_client.py](/Users/ch3cke/Desktop/project/Deepseek-Monitor/app/ingest_client.py:1)
+- `SupabaseStorage`: writes the same logical tables into a Supabase Postgres schema through the REST API
+- `FeishuBitableStorage`: reads and writes the same logical state into Feishu Bitable tables
+- `NoopStorage`: runs the monitor without persistence
+
+`IngestClient` remains the Cloudflare-specific transport with:
 
 - `get_state()`
 - `get_users()`
@@ -166,6 +209,11 @@ The Python side mirrors these interfaces in [app/ingest_client.py](/Users/ch3cke
 - `get_api_keys()`
 - `get_summary()`
 - `push_snapshot()`
+
+This means future backends such as another online database can be added as new classes under `app/storage/` without changing `app/main.py`.
+
+For the Feishu Bitable schema and setup details, see [docs/feishu-bitable-storage.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/docs/feishu-bitable-storage.md:1).
+For the Supabase schema and setup details, see [docs/supabase-storage.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/docs/supabase-storage.md:1).
 
 ## GitHub Actions Schedule
 
@@ -182,12 +230,12 @@ There is also a daily summary workflow at [summary.yml](/Users/ch3cke/Desktop/pr
 
 ## Notification Channels
 
-The project supports two optional notification channels:
+The project supports a composite notifier in `app/notifier/manager.py`, which currently includes:
 
 - Email via SMTP
 - Feishu custom bot via webhook
 
-If both are configured, both will receive warning, delete, and summary notifications.
+If both are configured, both will receive warning, delete, and summary notifications. Additional channels can be added as new classes under `app/notifier/` without changing the monitor flow.
 
 Feishu setup:
 

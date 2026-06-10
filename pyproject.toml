@@ -3,6 +3,7 @@ name = "deepseek-monitor"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "datetime>=6.0",
     "fastapi[standard]>=0.136.3",
     "load-dotenv>=0.1.0",
     "pandas>=3.0.3",

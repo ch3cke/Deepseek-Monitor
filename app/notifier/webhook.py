@@ -5,6 +5,9 @@ import time
 
 import requests
 
+from app.config import AppConfig
+from app.notifier.base import NotificationChannel
+
 
 def build_feishu_text_payload(title, body, keyword=""):
     parts = [part for part in [keyword.strip(), title.strip(), body.strip()] if part]
@@ -117,3 +120,24 @@ def send_feishu_bot_message(
     )
     response.raise_for_status()
     return response.json() if response.content else {"ok": True}
+
+
+class FeishuBotNotifier(NotificationChannel):
+    name = "feishu_bot"
+
+    def __init__(self, config: AppConfig):
+        self.config = config
+
+    @property
+    def enabled(self):
+        return self.config.feishu_enabled
+
+    def notify(self, subject, body):
+        return send_feishu_bot_message(
+            self.config.feishu_bot_webhook_url,
+            subject,
+            body,
+            keyword=self.config.feishu_bot_keyword,
+            secret=self.config.feishu_bot_secret,
+            message_type=self.config.feishu_bot_message_type,
+        )

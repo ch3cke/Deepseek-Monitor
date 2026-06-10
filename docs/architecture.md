@@ -11,9 +11,13 @@ GitHub Actions
      -> CSV extractor
      -> Usage aggregator
      -> Event engine
-     -> Email / Feishu notifiers
-     -> Cloudflare ingest client
-  -> Cloudflare Worker
+     -> Notification manager
+     -> Storage backend
+        -> Cloudflare ingest client
+        -> Supabase storage
+        -> Feishu Bitable storage
+        -> No-op storage
+  -> Optional Cloudflare Worker
      -> Authenticated REST API
      -> D1 persistence
 ```
@@ -34,14 +38,23 @@ GitHub Actions
 - `app/aggregator.py` groups usage by monitored `api_key.name`.
 - `app/events.py` decides warning and delete actions.
 - `app/notifications.py` formats user-facing messages.
-- `app/notifier/` dispatches email and Feishu messages.
-- `app/ingest_client.py` writes snapshots and reads the Worker API.
+- `app/notifier/` contains channel implementations plus a composite manager.
+- `app/storage/` contains storage backends selected by configuration.
+- `app/ingest_client.py` is the Cloudflare-specific transport used by the Cloudflare storage backend.
+
+### Storage Backends
+
+- `CloudflareStorage` persists monitor state and history through Worker APIs.
+- `SupabaseStorage` persists the same lifecycle and audit model into hosted Postgres tables via Supabase REST.
+- `FeishuBitableStorage` persists the same lifecycle and audit model into Feishu Base tables.
+- `NoopStorage` allows the monitor to run without persistence.
+- Future backends such as another online database should be added as new classes under `app/storage/`.
 
 ### Cloudflare Worker and D1
 
-- `cloudflare/worker.js` exposes authenticated REST endpoints.
-- `cloudflare/schema.sql` defines D1 tables and indexes.
-- D1 stores both current lifecycle state and historical audit data.
+- [cloudflare/worker.js](/Users/ch3cke/Desktop/project/Deepseek-Monitor/cloudflare/worker.js:1) exposes authenticated REST endpoints.
+- [cloudflare/schema.sql](/Users/ch3cke/Desktop/project/Deepseek-Monitor/cloudflare/schema.sql:1) defines D1 tables and indexes.
+- D1 stores both current lifecycle state and historical audit data when Cloudflare storage is enabled.
 
 ## Data Model
 
@@ -90,13 +103,13 @@ The Worker is the primary query interface over storage:
 - `GET /api/api-keys`
 - `GET /api/summary`
 
-This keeps the Python runner stateless. GitHub Actions performs collection and decisions, while Cloudflare hosts state and query APIs.
+This keeps the Python runner loosely coupled to storage. GitHub Actions performs collection and decisions, while the selected storage backend handles persistence and query APIs.
 
 ## Notification Model
 
-Notification channels are independent and optional:
+Notification channels are independent and optional implementations behind the notifier manager:
 
 - SMTP email
 - Feishu custom bot webhook
 
-The monitor can use either channel alone or both together.
+The monitor can use either channel alone or both together, and future channels can be added without changing the monitor orchestration.

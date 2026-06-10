@@ -25,11 +25,10 @@ class PlatformClient:
         data = self.request_json(
             "GET",
             f"{DEEPSEEK_API_BASE}/users/get_api_keys",
-            cookies=self.config.cookies,
             headers=self.config.headers,
         )
 
-        grouped = defaultdict(list)
+        grouped = defaultdict()
         api_keys = (
             data.get("data", {})
             .get("biz_data", {})
@@ -40,7 +39,7 @@ class PlatformClient:
         for api_key in api_keys:
             name = api_key.get("name")
             if name and name in monitored_users:
-                grouped[name].append(api_key)
+                grouped[name] = api_key
 
         return {name: keys for name, keys in grouped.items()}
 
@@ -48,7 +47,6 @@ class PlatformClient:
         response = requests.get(
             f"{DEEPSEEK_API_BASE}/usage/export",
             params={"month": month, "year": year},
-            cookies=self.config.cookies,
             headers=self.config.headers,
             timeout=EXPORT_TIMEOUT,
         )
@@ -58,7 +56,6 @@ class PlatformClient:
     def delete_api_key(self, api_key):
         response = requests.post(
             f"{DEEPSEEK_API_BASE}/users/edit_api_keys",
-            cookies=self.config.cookies,
             headers=self.config.headers,
             json={
                 "action": "delete",

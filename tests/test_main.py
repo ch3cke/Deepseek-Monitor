@@ -1,16 +1,25 @@
+import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pandas as pd
 
 from app.aggregator import aggregate_usage
+from app.config import load_config
 from app.events import evaluate_users
+from app.main import run_monitor
+from app.notifier.manager import NotificationManager
 from app.notifier.webhook import (
     build_feishu_interactive_payload,
     build_feishu_payload,
     build_feishu_signature,
     build_feishu_text_payload,
 )
+from app.storage import build_storage
+from app.storage.cloudflare import CloudflareStorage
+from app.storage.feishu_bitable import FeishuBitableStorage
+from app.storage.noop import NoopStorage
+from app.storage.supabase import SupabaseStorage
 from app.utils.api_keys import build_platform_key_record
 
 
@@ -201,6 +210,204 @@ class MainTests(unittest.TestCase):
 
         self.assertEqual(timestamp, "123456")
         self.assertEqual(sign, "Cnbwb2bjy+b6lxJUZIpTT1lHVWS/su4FnB9b7XsfgG0=")
+
+    def test_load_config_disables_storage_when_cloudflare_vars_are_missing(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH": "token",
+                "MONITORED_USERS": "alice,bob",
+            },
+            clear=True,
+        ):
+            config = load_config()
+
+        self.assertFalse(config.cloudflare_storage_enabled)
+        self.assertFalse(config.cloudflare_storage_partially_configured)
+        self.assertFalse(config.feishu_bitable_storage_enabled)
+        self.assertFalse(config.feishu_bitable_storage_partially_configured)
+        self.assertFalse(config.supabase_storage_enabled)
+        self.assertFalse(config.supabase_storage_partially_configured)
+
+    def test_load_config_marks_partial_storage_config(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH": "token",
+                "MONITORED_USERS": "alice,bob",
+                "CLOUDFLARE_INGEST_URL": "https://example.workers.dev/api/ingest",
+            },
+            clear=True,
+        ):
+            config = load_config()
+
+        self.assertFalse(config.cloudflare_storage_enabled)
+        self.assertTrue(config.cloudflare_storage_partially_configured)
+
+    def test_load_config_marks_feishu_bitable_storage_as_enabled(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH": "token",
+                "MONITORED_USERS": "alice,bob",
+                "FEISHU_APP_ID": "cli_xxx",
+                "FEISHU_APP_SECRET": "secret_xxx",
+                "FEISHU_BITABLE_APP_TOKEN": "app_token_xxx",
+                "FEISHU_BITABLE_USERS_TABLE_ID": "tbl_users",
+                "FEISHU_BITABLE_API_KEYS_TABLE_ID": "tbl_api_keys",
+                "FEISHU_BITABLE_USAGE_TABLE_ID": "tbl_usage",
+                "FEISHU_BITABLE_EVENTS_TABLE_ID": "tbl_events",
+            },
+            clear=True,
+        ):
+            config = load_config()
+
+        self.assertTrue(config.feishu_bitable_storage_enabled)
+        self.assertFalse(config.feishu_bitable_storage_partially_configured)
+
+    def test_load_config_marks_supabase_storage_as_enabled(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH": "token",
+                "MONITORED_USERS": "alice,bob",
+                "SUPABASE_URL": "https://project.supabase.co",
+                "SUPABASE_SERVICE_ROLE_KEY": "service-role-key",
+                "SUPABASE_MANAGED_USERS_TABLE": "managed_users",
+                "SUPABASE_API_KEYS_TABLE": "api_keys",
+                "SUPABASE_USAGE_RECORDS_TABLE": "usage_records",
+                "SUPABASE_EVENTS_TABLE": "events",
+            },
+            clear=True,
+        ):
+            config = load_config()
+
+        self.assertTrue(config.supabase_storage_enabled)
+        self.assertFalse(config.supabase_storage_partially_configured)
+
+    def test_build_storage_returns_noop_backend_when_storage_is_disabled(self):
+        config = Mock(
+            storage_backend="auto",
+            cloudflare_storage_enabled=False,
+            cloudflare_storage_partially_configured=False,
+            feishu_bitable_storage_enabled=False,
+            feishu_bitable_storage_partially_configured=False,
+            supabase_storage_enabled=False,
+            supabase_storage_partially_configured=False,
+        )
+
+        storage = build_storage(config)
+
+        self.assertIsInstance(storage, NoopStorage)
+
+    def test_build_storage_returns_cloudflare_backend_when_storage_is_enabled(self):
+        config = Mock(
+            storage_backend="auto",
+            cloudflare_storage_enabled=True,
+            cloudflare_storage_partially_configured=False,
+            feishu_bitable_storage_enabled=False,
+            feishu_bitable_storage_partially_configured=False,
+            supabase_storage_enabled=False,
+            supabase_storage_partially_configured=False,
+        )
+
+        storage = build_storage(config)
+
+        self.assertIsInstance(storage, CloudflareStorage)
+
+    def test_build_storage_auto_prefers_cloudflare_over_other_backends(self):
+        config = Mock(
+            storage_backend="auto",
+            cloudflare_storage_enabled=True,
+            cloudflare_storage_partially_configured=False,
+            feishu_bitable_storage_enabled=True,
+            feishu_bitable_storage_partially_configured=False,
+            supabase_storage_enabled=True,
+            supabase_storage_partially_configured=False,
+        )
+
+        storage = build_storage(config)
+
+        self.assertIsInstance(storage, CloudflareStorage)
+
+    def test_build_storage_returns_feishu_bitable_backend_when_requested(self):
+        config = Mock(
+            storage_backend="feishu_bitable",
+            cloudflare_storage_enabled=False,
+            cloudflare_storage_partially_configured=False,
+            feishu_bitable_storage_enabled=True,
+            feishu_bitable_storage_partially_configured=False,
+            supabase_storage_enabled=False,
+            supabase_storage_partially_configured=False,
+        )
+
+        storage = build_storage(config)
+
+        self.assertIsInstance(storage, FeishuBitableStorage)
+
+    def test_build_storage_returns_supabase_backend_when_requested(self):
+        config = Mock(
+            storage_backend="supabase",
+            cloudflare_storage_enabled=False,
+            cloudflare_storage_partially_configured=False,
+            feishu_bitable_storage_enabled=False,
+            feishu_bitable_storage_partially_configured=False,
+            supabase_storage_enabled=True,
+            supabase_storage_partially_configured=False,
+        )
+
+        storage = build_storage(config)
+
+        self.assertIsInstance(storage, SupabaseStorage)
+
+    def test_notification_manager_notifies_all_enabled_channels(self):
+        email_channel = Mock(enabled=True)
+        email_channel.notify.return_value = {"ok": True, "channel": "email"}
+        feishu_channel = Mock(enabled=True)
+        feishu_channel.notify.return_value = {"ok": True, "channel": "feishu_bot"}
+        disabled_channel = Mock(enabled=False)
+
+        manager = NotificationManager([email_channel, feishu_channel, disabled_channel])
+        results = manager.notify("Alert", "body text")
+
+        email_channel.notify.assert_called_once_with("Alert", "body text")
+        feishu_channel.notify.assert_called_once_with("Alert", "body text")
+        disabled_channel.notify.assert_not_called()
+        self.assertEqual(len(results), 2)
+
+    @patch("app.main.collect_usage_snapshot", return_value=(6, 2026, {}, {"users": {}}))
+    @patch("app.main.evaluate_users", return_value=([], []))
+    @patch("app.main.build_notifier")
+    @patch("app.main.build_storage")
+    @patch("app.main.PlatformClient")
+    @patch("app.main.load_config")
+    def test_run_monitor_uses_storage_factory_instead_of_direct_ingest_client(
+        self,
+        load_config_mock,
+        _platform_client_mock,
+        build_storage_mock,
+        build_notifier_mock,
+        _evaluate_users_mock,
+        _collect_usage_snapshot_mock,
+    ):
+        load_config_mock.return_value = Mock(
+            monitored_users=["alice"],
+            default_budget_limit=100.0,
+            default_warning_threshold=80.0,
+        )
+        storage = Mock()
+        storage.name = "mock_storage"
+        storage.startup_message.return_value = "Cloudflare storage enabled."
+        storage.get_state.return_value = {"users": {}, "events": []}
+        storage.push_snapshot.return_value = {"ok": True}
+        build_storage_mock.return_value = storage
+        build_notifier_mock.return_value = Mock(notify=Mock())
+
+        run_monitor()
+
+        build_storage_mock.assert_called_once()
+        storage.get_state.assert_called_once()
+        storage.push_snapshot.assert_called_once()
 
 
 if __name__ == "__main__":

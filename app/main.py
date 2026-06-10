@@ -5,47 +5,38 @@ from app.aggregator import aggregate_usage, build_api_keys_payload, refresh_acti
 from app.config import load_config
 from app.events import build_managed_users_payload, evaluate_users
 from app.extractor import extract_amount_csv
-from app.ingest_client import IngestClient
-from app.notifier.email import send_email
-from app.notifier.webhook import send_feishu_bot_message
+from app.notifier import build_notifier
 from app.notifications import build_summary_email
 from app.platform_client import PlatformClient
+from app.storage import build_storage
 
 
-def resolve_billing_period(config):
+def resolve_billing_period():
     now = datetime.now()
     return (
-        config.usage_month or now.month,
-        config.usage_year or now.year,
+        now.month,
+        now.year,
     )
 
 
 def collect_usage_snapshot(config, platform_client):
-    month, year = resolve_billing_period(config)
+    month, year = resolve_billing_period()
     active_api_keys_by_name = platform_client.list_api_keys_by_name()
     amount = extract_amount_csv(platform_client.request_usage_export(month, year))
     result = aggregate_usage(amount, config.monitored_users, active_api_keys_by_name)
     return month, year, active_api_keys_by_name, result
 
 
-def notify_channels(config, subject, body):
-    send_email(config, subject, body)
-    if config.feishu_enabled:
-        send_feishu_bot_message(
-            config.feishu_bot_webhook_url,
-            subject,
-            body,
-            keyword=config.feishu_bot_keyword,
-            secret=config.feishu_bot_secret,
-            message_type=config.feishu_bot_message_type,
-        )
-
-
 def run_monitor():
-    config = load_config(require_cloudflare=True)
+    config = load_config()
     platform_client = PlatformClient(config)
-    ingest_client = IngestClient(config)
-    state = ingest_client.get_state()
+    storage = build_storage(config)
+    notifier = build_notifier(config)
+
+    startup_message = storage.startup_message()
+    if startup_message:
+        print(startup_message)
+    state = storage.get_state()
 
     month, year, active_api_keys_by_name, result = collect_usage_snapshot(
         config,
@@ -60,7 +51,7 @@ def run_monitor():
         default_budget_limit=config.default_budget_limit,
         default_warning_threshold=config.default_warning_threshold,
         delete_api_key=platform_client.delete_api_key,
-        send_email=lambda subject, body: notify_channels(config, subject, body),
+        send_email=notifier.notify,
     )
 
     if archived_keys:
@@ -79,7 +70,7 @@ def run_monitor():
         archived_keys,
     )
 
-    response = ingest_client.push_snapshot(
+    response = storage.push_snapshot(
         result=result,
         month=month,
         year=year,
@@ -87,18 +78,20 @@ def run_monitor():
         api_keys=api_keys_payload,
         events=events,
     )
-    print(f"Uploaded to Cloudflare D1: {response}")
+    if response and not response.get("skipped"):
+        print(f"Uploaded to {storage.name}: {response}")
 
 
 def run_summary():
-    config = load_config(require_cloudflare=False)
+    config = load_config()
     platform_client = PlatformClient(config)
+    notifier = build_notifier(config)
     month, year, _active_api_keys_by_name, result = collect_usage_snapshot(
         config,
         platform_client,
     )
     subject, body = build_summary_email(result, month, year)
-    notify_channels(config, subject, body)
+    notifier.notify(subject, body)
 
 
 def build_parser():

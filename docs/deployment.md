@@ -17,8 +17,6 @@ Add these GitHub Actions Secrets:
 - `DEEPSEEK_INTERCOM_DEVICE_ID`
 - `DEEPSEEK_HWWAFSESID`
 - `DEEPSEEK_HWWAFSESTIME`
-- `CLOUDFLARE_INGEST_URL`
-- `INGEST_TOKEN`
 
 ### Optional Email
 
@@ -36,7 +34,36 @@ Add these GitHub Actions Secrets:
 - `FEISHU_BOT_KEYWORD`
 - `FEISHU_BOT_MESSAGE_TYPE`
 
+### Optional Cloudflare Storage
+
+- `STORAGE_BACKEND`
+- `CLOUDFLARE_INGEST_URL`
+- `INGEST_TOKEN`
+
+### Optional Feishu Bitable Storage
+
+- `STORAGE_BACKEND=feishu_bitable` or `auto`
+- `FEISHU_APP_ID`
+- `FEISHU_APP_SECRET`
+- `FEISHU_BITABLE_APP_TOKEN`
+- `FEISHU_BITABLE_USERS_TABLE_ID`
+- `FEISHU_BITABLE_API_KEYS_TABLE_ID`
+- `FEISHU_BITABLE_USAGE_TABLE_ID`
+- `FEISHU_BITABLE_EVENTS_TABLE_ID`
+
+### Optional Supabase Storage
+
+- `STORAGE_BACKEND=supabase` or `auto`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_MANAGED_USERS_TABLE` (optional)
+- `SUPABASE_API_KEYS_TABLE` (optional)
+- `SUPABASE_USAGE_RECORDS_TABLE` (optional)
+- `SUPABASE_EVENTS_TABLE` (optional)
+
 ## 3. Deploy Cloudflare Worker
+
+This section is only required when `STORAGE_BACKEND=auto` with Cloudflare secrets present, or when `STORAGE_BACKEND=cloudflare`.
 
 1. Create a D1 database.
 2. Apply [cloudflare/schema.sql](/Users/ch3cke/Desktop/project/Deepseek-Monitor/cloudflare/schema.sql:1).
@@ -80,11 +107,31 @@ All API requests must include:
 Authorization: Bearer <INGEST_TOKEN>
 ```
 
-## 6. Common Deployment Choices
+## 6. Configure Feishu Bitable Storage
+
+This section is only required when `STORAGE_BACKEND=feishu_bitable`, or when `STORAGE_BACKEND=auto` and you want Bitable to be the fallback storage backend.
+
+1. Create a Feishu self-built app and grant it Bitable record read/write permissions.
+2. Add the app as a document application or collaborator to the target Base.
+3. Create the four logical tables used by the monitor.
+4. Fill in the corresponding `FEISHU_BITABLE_*` secrets.
+5. Use the exact field names described in [docs/feishu-bitable-storage.md](/Users/ch3cke/Desktop/project/Deepseek-Monitor/docs/feishu-bitable-storage.md:1).
+
+## 7. Configure Supabase Storage
+
+This section is only required when `STORAGE_BACKEND=supabase`, or when `STORAGE_BACKEND=auto` and you want Supabase to be the fallback storage backend.
+
+1. Create a Supabase project.
+2. Apply [supabase/schema.sql](/Users/ch3cke/Desktop/project/Deepseek-Monitor/supabase/schema.sql:1) in the SQL editor.
+3. Create a service role key for server-side writes.
+4. Fill in the corresponding `SUPABASE_*` secrets.
+5. Keep the unique constraints on `managed_users.name`, `api_keys.api_key_identity`, and `events.event_key` for upsert behavior.
+
+## 8. Common Deployment Choices
 
 ### Email Only
 
-Configure SMTP secrets and leave Feishu secrets empty.
+Set `STORAGE_BACKEND=none` if you do not want persistence, configure SMTP secrets, and leave Feishu secrets empty.
 
 ### Feishu Only
 
@@ -93,3 +140,15 @@ Configure `FEISHU_BOT_WEBHOOK_URL` and leave SMTP secrets empty.
 ### Email And Feishu
 
 Configure both. The monitor sends the same warning and summary content to both channels.
+
+### Cloudflare Persistence
+
+Set `STORAGE_BACKEND=cloudflare` or keep `auto`, then provide both `CLOUDFLARE_INGEST_URL` and `INGEST_TOKEN`.
+
+### Feishu Bitable Persistence
+
+Set `STORAGE_BACKEND=feishu_bitable` or keep `auto`, then provide all `FEISHU_APP_*` and `FEISHU_BITABLE_*` secrets.
+
+### Supabase Persistence
+
+Set `STORAGE_BACKEND=supabase` or keep `auto`, then provide all `SUPABASE_*` secrets.
