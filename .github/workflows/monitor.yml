@@ -27,24 +27,7 @@ jobs:
         env:
           AUTH: ${{ secrets.AUTH }}
           MONITORED_USERS: ${{ secrets.MONITORED_USERS }}
-          DEFAULT_BUDGET_LIMIT: ${{ secrets.DEFAULT_BUDGET_LIMIT }}
-          DEFAULT_WARNING_THRESHOLD: ${{ secrets.DEFAULT_WARNING_THRESHOLD }}
-          DEEPSEEK_INTERCOM_DEVICE_ID: ${{ secrets.DEEPSEEK_INTERCOM_DEVICE_ID }}
-          DEEPSEEK_HWWAFSESID: ${{ secrets.DEEPSEEK_HWWAFSESID }}
-          DEEPSEEK_HWWAFSESTIME: ${{ secrets.DEEPSEEK_HWWAFSESTIME }}
-          CLOUDFLARE_INGEST_URL: ${{ secrets.CLOUDFLARE_INGEST_URL }}
-          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-          RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
-          FEISHU_BOT_WEBHOOK_URL: ${{ secrets.FEISHU_BOT_WEBHOOK_URL }}
-          FEISHU_BOT_SECRET: ${{ secrets.FEISHU_BOT_SECRET }}
-          FEISHU_BOT_KEYWORD: ${{ secrets.FEISHU_BOT_KEYWORD }}
-          FEISHU_BOT_MESSAGE_TYPE: ${{ secrets.FEISHU_BOT_MESSAGE_TYPE }}
-          PYTHONUNBUFFERED: "1"
+
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_BITABLE_APP_TOKEN: ${{ secrets.FEISHU_BITABLE_APP_TOKEN }}
