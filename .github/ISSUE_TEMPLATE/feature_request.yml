@@ -1,0 +1,29 @@
+name: Feature Request
+description: Propose a new capability for monitoring, notifications, storage, or APIs.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What limitation are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+  - type: textarea
+    id: impact
+    attributes:
+      label: Expected Impact
+      description: Explain how this affects workflows, storage, API compatibility, or notifications.

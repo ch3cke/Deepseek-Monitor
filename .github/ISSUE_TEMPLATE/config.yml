@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Report
+    url: https://github.com/ch3cke/Deepseek-Monitor/security/advisories/new
+    about: Report vulnerabilities privately and do not post credentials or cookies in public issues.

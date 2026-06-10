@@ -1,12 +1,12 @@
-name: DeepSeek Usage Check
+name: DeepSeek Usage Summary
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
-  check-usage:
+  send-summary:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -22,8 +22,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run usage checker
-        run: python -m app.main monitor
+      - name: Send daily summary
+        run: python -m app.main summary
         env:
           AUTH: ${{ secrets.AUTH }}
           MONITORED_USERS: ${{ secrets.MONITORED_USERS }}
@@ -32,8 +32,6 @@ jobs:
           DEEPSEEK_INTERCOM_DEVICE_ID: ${{ secrets.DEEPSEEK_INTERCOM_DEVICE_ID }}
           DEEPSEEK_HWWAFSESID: ${{ secrets.DEEPSEEK_HWWAFSESID }}
           DEEPSEEK_HWWAFSESTIME: ${{ secrets.DEEPSEEK_HWWAFSESTIME }}
-          CLOUDFLARE_INGEST_URL: ${{ secrets.CLOUDFLARE_INGEST_URL }}
-          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}

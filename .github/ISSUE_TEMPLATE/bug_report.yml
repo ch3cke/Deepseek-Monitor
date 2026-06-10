@@ -1,0 +1,47 @@
+name: Bug Report
+description: Report a defect in monitoring, notifications, storage, or workflows.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the problem clearly.
+      placeholder: The monitor skipped a delete event after the user reached the budget limit.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps To Reproduce
+      description: Provide minimal steps.
+      placeholder: |
+        1. Configure MONITORED_USERS=alice
+        2. Run python -m app.main monitor
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, workflow run, local run, Worker version, and any relevant deployment details.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized Logs
+      description: Remove cookies, tokens, SMTP credentials, and webhook URLs before posting.
